@@ -43,8 +43,7 @@ do
             $OPTARG == "dump"     ]]; then
         ACTION=$OPTARG
       else
-        usage
-        exit 1
+        continue
       fi
       ;;
     g)
