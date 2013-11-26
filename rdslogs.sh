@@ -14,7 +14,7 @@ usage()
      -u    User
      -p    Password
      -P    Port
-     -a    Actions: [config|enable|disable|rotate|dump]
+     -a    Actions: [configure|enable|disable|rotate|dump]
      -g    RDS Parameter Group
 EOF
 }
