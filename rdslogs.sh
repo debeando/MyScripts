@@ -66,6 +66,11 @@ then
 fi
 
 if [ $ACTION == "configure" ]; then
+  if ! type -P "rds-modify-db-parameter-group" > /dev/null; then
+    echo "Install and configure Amazon RDS Command Line Toolkit"
+    exit 1
+  fi
+
   rds-modify-db-parameter-group $GROUP \
     --parameters "name=general_log,value=ON,method=immediate" \
     --parameters "name=slow_query_log, value=ON, method=immediate" \
