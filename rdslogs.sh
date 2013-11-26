@@ -5,16 +5,16 @@ usage()
   cat << EOF
   RDS Logs Manager
 
-  usage: $0 -h host -u user -p password -P port -a [configure|enable|disable|rotate|dump] -g default
+  usage: $0 -h host -u user -p password -P port -a [config|unconfig|enable|disable|rotate|dump] -g default
 
-  $0 -h localhost -u root -p admin -P 3306 -a configure -g name
+  $0 -h localhost -u root -p admin -P 3306 -a config -g name
 
   OPTIONS:
      -h    Host
      -u    User
      -p    Password
      -P    Port
-     -a    Actions: [configure|enable|disable|rotate|dump]
+     -a    Actions: [config|unconfig|enable|disable|rotate|dump]
      -g    RDS Parameter Group
 EOF
 }
@@ -35,12 +35,16 @@ do
       PORT=$OPTARG
       ;;
     a)
-      if [[ ( $OPTARG == "configure" ) ||
-            ( $OPTARG == "enable"    ) ||
-            ( $OPTARG == "disable"   ) ||
-            ( $OPTARG == "rotate"    ) ||
-            ( $OPTARG == "dump"      ) ]]; then
+      if [[ $OPTARG == "config"   ||
+            $OPTARG == "unconfig" ||
+            $OPTARG == "enable"   ||
+            $OPTARG == "disable"  ||
+            $OPTARG == "rotate"   ||
+            $OPTARG == "dump"     ]]; then
         ACTION=$OPTARG
+      else
+        usage
+        exit 1
       fi
       ;;
     g)
@@ -53,19 +57,20 @@ do
     esac
 done
 
-if [[ (-z $HOST) || (-z $USER) || (-z $PASSWORD) || (-z $PORT) || ( -z $ACTION ) ]]
+if [[ ( -z $HOST && -z $USER && -z $PASSWORD && -z $PORT && -z $ACTION ) || ( -z $ACTION && -z $GROUP ) ]]
 then
   usage
   exit 1
 fi
 
-if [[ ! -x '/usr/bin/mysql' || ! -x '/usr/bin/mysqldump' ]]
+if ( ! type -P 'mysql' > /dev/null ) || ( ! type -P 'mysqldump' > /dev/null )
 then
   echo "Not exist mysql client, please install."
   exit 1
 fi
 
-if [ $ACTION == "configure" ]; then
+if [[ $ACTION == "config" ]]
+then
   if ! type -P "rds-modify-db-parameter-group" > /dev/null; then
     echo "Install and configure Amazon RDS Command Line Toolkit"
     exit 1
@@ -78,6 +83,16 @@ if [ $ACTION == "configure" ]; then
     --parameters "name=min_examined_row_limit, value=100, method=immediate" \
     --parameters "name=log_queries_not_using_indexes, value=1, method=immediate" \
     --parameters="name=event_scheduler, value=ON, method=immediate"
+elif [ $ACTION == "unconfig" ]; then
+  if ! type -P "rds-modify-db-parameter-group" > /dev/null; then
+    echo "Install and configure Amazon RDS Command Line Toolkit"
+    exit 1
+  fi
+
+  rds-modify-db-parameter-group $GROUP \
+    --parameters "name=general_log,value=OFF,method=immediate" \
+    --parameters "name=slow_query_log, value=OFF, method=immediate" \
+    --parameters="name=event_scheduler, value=OFF, method=immediate"
 elif [ $ACTION == "enable" ]; then
   CMDS[0]="CREATE EVENT IF NOT EXISTS ev_rds_slow_log_rotation    ON SCHEDULE EVERY 6 HOUR   DO CALL mysql.rds_rotate_slow_log();"
   CMDS[1]="CREATE EVENT IF NOT EXISTS ev_rds_general_log_rotation ON SCHEDULE EVERY 6 HOUR   DO CALL mysql.rds_rotate_general_log();"
@@ -98,6 +113,7 @@ elif [ $ACTION == "dump" ]; then
   DATETIME=$(date '+%Y%m%d_%H%M%S')
 
   mysqldump -h ${HOST} \
+            -P ${PORT} \
             -u ${USER} \
             -p${PASSWORD} \
             --default-character-set=utf8 \
@@ -107,6 +123,7 @@ elif [ $ACTION == "dump" ]; then
             general_log > general_${DATETIME}.log
 
   mysqldump -h ${HOST} \
+            -P ${PORT} \
             -u ${USER} \
             -p${PASSWORD} \
             --default-character-set=utf8 \
@@ -119,8 +136,9 @@ fi
 for ((i = 0; i < ${#CMDS[@]}; i++))
 do
   echo "${CMDS[i]}"
-  /usr/bin/mysql -h ${HOST} \
-                 -u ${USER} \
-                 -p${PASSWORD} \
-                 mysql -e "${CMDS[i]}"
+  mysql -h ${HOST} \
+        -P ${PORT} \
+        -u ${USER} \
+        -p${PASSWORD} \
+        mysql -e "${CMDS[i]}"
 done
