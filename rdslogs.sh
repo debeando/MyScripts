@@ -98,7 +98,8 @@ elif [ $ACTION == "dump" ]; then
             --default-character-set=utf8 \
             --skip-extended-insert \
             --single-transaction \
-            mysql.general_log > general_${DATETIME}.log
+            mysql \
+            general_log > general_${DATETIME}.log
 
   mysqldump -h ${HOST} \
             -u ${USER} \
@@ -106,7 +107,8 @@ elif [ $ACTION == "dump" ]; then
             --default-character-set=utf8 \
             --skip-extended-insert \
             --single-transaction \
-            mysql.slow_log > slow_${DATETIME}.log
+            mysql \
+            slow_log > slow_${DATETIME}.log
 fi
 
 for ((i = 0; i < ${#CMDS[@]}; i++))
