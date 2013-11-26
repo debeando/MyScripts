@@ -65,8 +65,8 @@ then
   exit 1
 fi
 
-if [ $ACTION == "config" ]; then
-  rds-modify-db-parameter-group $6 \
+if [ $ACTION == "configure" ]; then
+  rds-modify-db-parameter-group $GROUP \
     --parameters "name=general_log,value=ON,method=immediate" \
     --parameters "name=slow_query_log, value=ON, method=immediate" \
     --parameters "name=long_query_time, value=10, method=immediate" \
