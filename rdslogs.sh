@@ -68,9 +68,16 @@ then
   exit 1
 fi
 
+if [[ ! -n "$AWS_CREDENTIAL_FILE" ]]
+then
+  echo "Is not define variable AWS_CREDENTIAL_FILE in your bash."
+  exit 1
+fi
+
 if [[ $ACTION == "config" ]]
 then
-  if ! type -P "rds-modify-db-parameter-group" > /dev/null; then
+  if ( ! type -P "rds-modify-db-parameter-group" > /dev/null )
+  then
     echo "Install and configure Amazon RDS Command Line Toolkit"
     exit 1
   fi
@@ -82,8 +89,10 @@ then
     --parameters "name=min_examined_row_limit, value=100, method=immediate" \
     --parameters "name=log_queries_not_using_indexes, value=1, method=immediate" \
     --parameters="name=event_scheduler, value=ON, method=immediate"
-elif [ $ACTION == "unconfig" ]; then
-  if ! type -P "rds-modify-db-parameter-group" > /dev/null; then
+elif [[ $ACTION == "unconfig" ]]
+then
+  if ! type -P "rds-modify-db-parameter-group" > /dev/null
+  then
     echo "Install and configure Amazon RDS Command Line Toolkit"
     exit 1
   fi
@@ -92,23 +101,27 @@ elif [ $ACTION == "unconfig" ]; then
     --parameters "name=general_log,value=OFF,method=immediate" \
     --parameters "name=slow_query_log, value=OFF, method=immediate" \
     --parameters="name=event_scheduler, value=OFF, method=immediate"
-elif [ $ACTION == "enable" ]; then
+elif [[ $ACTION == "enable" ]]
+then
   CMDS[0]="CREATE EVENT IF NOT EXISTS ev_rds_slow_log_rotation    ON SCHEDULE EVERY 6 HOUR   DO CALL mysql.rds_rotate_slow_log();"
   CMDS[1]="CREATE EVENT IF NOT EXISTS ev_rds_general_log_rotation ON SCHEDULE EVERY 6 HOUR   DO CALL mysql.rds_rotate_general_log();"
   CMDS[2]="CREATE EVENT IF NOT EXISTS ev_rds_gsh_rotation         ON SCHEDULE EVERY 6 HOUR   DO CALL mysql.rds_rotate_global_status_history();"
   CMDS[3]="CREATE EVENT IF NOT EXISTS ev_rds_gsh_collector        ON SCHEDULE EVERY 1 MINUTE DO CALL mysql.rds_collect_global_status_history();"
   CMDS[4]="FLUSH STATUS;"
   CMDS[5]="CALL mysql.rds_enable_gsh_collector();"
-elif [ $ACTION == "disable" ]; then
+elif [[ $ACTION == "disable" ]]
+then
   CMDS[0]="CALL mysql.rds_disable_gsh_collector();"
   CMDS[1]="DROP EVENT ev_rds_gsh_collector;"
   CMDS[2]="DROP EVENT ev_rds_gsh_rotation;"
   CMDS[3]="DROP EVENT ev_rds_slow_log_rotation;"
   CMDS[4]="DROP EVENT ev_rds_general_log_rotation;"
-elif [ $ACTION == "rotate" ]; then
+elif [[ $ACTION == "rotate" ]]
+then
   CMDS[0]="CALL mysql.rds_rotate_slow_log;"
   CMDS[1]="CALL mysql.rds_rotate_general_log;"
-elif [ $ACTION == "dump" ]; then
+elif [[ $ACTION == "dump" ]]
+then
   DATETIME=$(date '+%Y%m%d_%H%M%S')
 
   mysqldump -h ${HOST} \
