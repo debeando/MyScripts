@@ -87,8 +87,7 @@ then
     --parameters "name=slow_query_log, value=ON, method=immediate" \
     --parameters "name=long_query_time, value=10, method=immediate" \
     --parameters "name=min_examined_row_limit, value=100, method=immediate" \
-    --parameters "name=log_queries_not_using_indexes, value=1, method=immediate" \
-    --parameters="name=event_scheduler, value=ON, method=immediate"
+    --parameters "name=log_queries_not_using_indexes, value=1, method=immediate"
 elif [[ $ACTION == "unconfig" ]]
 then
   if ! type -P "rds-modify-db-parameter-group" > /dev/null
@@ -99,8 +98,7 @@ then
 
   rds-modify-db-parameter-group $GROUP \
     --parameters "name=general_log,value=OFF,method=immediate" \
-    --parameters "name=slow_query_log, value=OFF, method=immediate" \
-    --parameters="name=event_scheduler, value=OFF, method=immediate"
+    --parameters "name=slow_query_log, value=OFF, method=immediate"
 elif [[ $ACTION == "enable" ]]
 then
   CMDS[0]="CREATE EVENT IF NOT EXISTS ev_rds_slow_log_rotation    ON SCHEDULE EVERY 6 HOUR   DO CALL mysql.rds_rotate_slow_log();"
