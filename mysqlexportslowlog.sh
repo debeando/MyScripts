@@ -56,7 +56,7 @@ mysql -h $HOST \
       --silent \
       --no-auto-rehash \
       --compress \
-      -e "
+      -e "$(cat <<-EOF
 SELECT CONCAT(
 '# Time: ', DATE_FORMAT(start_time, '%y%m%d %H%i:%s'), CHAR(10),
 '# User@Host: ', user_host, CHAR(10),
@@ -65,11 +65,10 @@ SELECT CONCAT(
 ' Rows_sent: ', rows_sent,
 '  Rows_examined: ', rows_examined, CHAR(10),
 'SET timestamp=', UNIX_TIMESTAMP(start_time), ';', CHAR(10),
-IF(FIND_IN_SET(sql_text, 'Sleep,Quit,Init DB,Query,Field List,Create DB,Drop DB,Refresh,Shutdown,Statistics,Processlist,Connect,Kill,Debug,Ping,Time,Delayed insert,Change user,Binlog Dump,Table Dump,Connect Out,Register Slave,Prepare,Execute,Long Data,Close stmt,Reset s
-tmt,Set option,Fetch,Daemon,Error'),
+IF(FIND_IN_SET(sql_text, 'Sleep,Quit,Init DB,Query,Field List,Create DB,Drop DB,Refresh,Shutdown,Statistics,Processlist,Connect,Kill,Debug,Ping,Time,Delayed insert,Change user,Binlog Dump,Table Dump,Connect Out,Register Slave,Prepare,Execute,Long Data,Close stmt,Reset stmt,Set option,Fetch,Daemon,Error'),
   CONCAT('# administrator command: ', sql_text), sql_text),
 ';'
-) AS `# slow-log`
-FROM `mysql`.`slow_log`;
-"
+) AS '# slow-log'
+FROM mysql.slow_log;
+EOF)"
 echo "#"
