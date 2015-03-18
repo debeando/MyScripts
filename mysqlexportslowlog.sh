@@ -47,7 +47,16 @@ then
   exit 1
 fi
 
-cat <<'GO' | mysql -h $HOST -u $USER -p$PASSWORD --raw --skip-column-names --quick --silent --no-auto-rehash --compress $*
+mysql -h $HOST \
+      -u $USER \
+      -p$PASSWORD \
+      --raw \
+      --skip-column-names \
+      --quick \
+      --silent \
+      --no-auto-rehash \
+      --compress \
+      -e "
 SELECT CONCAT(
 '# Time: ', DATE_FORMAT(start_time, '%y%m%d %H%i:%s'), CHAR(10),
 '# User@Host: ', user_host, CHAR(10),
@@ -62,5 +71,5 @@ tmt,Set option,Fetch,Daemon,Error'),
 ';'
 ) AS `# slow-log`
 FROM `mysql`.`slow_log`;
-GO
+"
 echo "#"
