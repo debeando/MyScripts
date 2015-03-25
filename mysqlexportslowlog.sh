@@ -5,12 +5,13 @@ usage()
   cat << EOF
   usage: $0 -h host -u user -p password
 
-  $0 -h 127.0.0.1 -u root -p admin
+  $0 -h 127.0.0.1 -u root -p admin -d foo
 
   OPTIONS:
      -h Host
      -u User
      -p Password
+     -d Database
 EOF
 }
 
@@ -26,6 +27,9 @@ do
     p)
       PASSWORD=$OPTARG
       ;;
+    d)
+      DATABASE=$OPTARG
+      ;;
     ?)
       usage
       exit 1
@@ -35,7 +39,7 @@ done
 
 # Define variables:
 # -----------------
-if [[ ( -z $HOST || -z $USER || -z $PASSWORD ) ]]
+if [[ ( -z $HOST || -z $USER || -z $PASSWORD || -z $DATABASE ) ]]
 then
   usage
   exit 1
@@ -70,6 +74,7 @@ IF(FIND_IN_SET(sql_text, 'Sleep,Quit,Init DB,Query,Field List,Create DB,Drop DB,
 ';'
 ) AS '# slow-log'
 FROM mysql.slow_log
-WHERE sql_text LIKE 'SELECT%';
+WHERE db = '$DATABASE'
+  AND sql_text LIKE 'SELECT%';
 EOF)"
 echo "#"
