@@ -3,7 +3,7 @@
 usage()
 {
   cat << EOF
-  usage: $0 -h host -u user -p password
+  usage: $0 -h host -u user -p password -d foo
 
   $0 -h 127.0.0.1 -u root -p admin -d foo
 
