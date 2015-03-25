@@ -69,6 +69,7 @@ IF(FIND_IN_SET(sql_text, 'Sleep,Quit,Init DB,Query,Field List,Create DB,Drop DB,
   CONCAT('# administrator command: ', sql_text), sql_text),
 ';'
 ) AS '# slow-log'
-FROM mysql.slow_log;
+FROM mysql.slow_log
+WHERE sql_text LIKE 'SELECT%';
 EOF)"
 echo "#"
