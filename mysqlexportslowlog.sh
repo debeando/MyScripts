@@ -76,5 +76,6 @@ IF(FIND_IN_SET(sql_text, 'Sleep,Quit,Init DB,Query,Field List,Create DB,Drop DB,
 FROM mysql.slow_log
 WHERE db = '$DATABASE'
   AND sql_text LIKE 'SELECT%';
-EOF)"
+EOF
+)"
 echo "#"
