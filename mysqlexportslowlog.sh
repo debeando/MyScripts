@@ -3,9 +3,9 @@
 usage()
 {
   cat << EOF
-  usage: $0 -h host -u user -p password -d foo
+  usage: $0 -h host -u user -p password -d foo > slow.log
 
-  $0 -h 127.0.0.1 -u root -p admin -d foo
+  $0 -h 127.0.0.1 -u root -p admin -d foo > slow.log
 
   OPTIONS:
      -h Host
