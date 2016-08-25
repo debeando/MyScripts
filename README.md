@@ -7,6 +7,7 @@ My own scripts write in any languages for all cases.
 ## Instalación:
 
 ```bash
+# brew install shellcheck
 # gem install bundler
 # bundler
 ```
