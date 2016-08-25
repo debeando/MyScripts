@@ -1,0 +1,12 @@
+source 'https://rubygems.org'
+
+gem 'aws'
+gem 'aws-sdk'
+gem 'aws-sdk-core'
+gem 'bundler'
+gem 'facter'
+gem 'hiera'
+gem 'puppet'
+gem 'puppet-lint', '~>1.0.1'
+gem 'rake'
+gem 'retries'
