@@ -1,4 +1,6 @@
 #!/usr/bin/env perl
+# -*- mode: perl -*-
+# vi: set ft=perl :
 #
 # MySQL Data Chunk Script
 #
@@ -28,7 +30,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # This project would not be possible without help from:
-# - Nicola Strappazzon Carotenuto
+# - Nicola Strappazzon Carotenuto nicola@swapbytes.com
 #
 # TODO:
 # =====
