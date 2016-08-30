@@ -1,20 +1,21 @@
 #!/usr/bin/env perl
 # -*- mode: perl -*-
+# -*- coding: utf-8 -*-
 # vi: set ft=perl :
 #
 # MySQL Data Chunk Script
 #
 # The most popular DBA script for MySQL who; Percona ToolKit, MySQL Utilities,
-# MyTop, and MySQLTuner is written in Perl, because I chose that.
+# MyTop, InnoTOP, and MySQLTuner is written in Perl, because I chose that.
 #
 # This is is mature, proven in the real world, and well tested, but all database
 # tools can pose a risk to the system and the database server. Before using this
 # tool, please:
 #
 #  - Read the tool’s documentation
-#  - Review the tool’s known “BUGS”
+#  - Review the tool’s known "BUGS"
 #  - Test the tool on a non-production server
-#  - Backup your production server and verify the backups
+#  - Backup your data in production server before run this script.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -34,9 +35,11 @@
 #
 # TODO:
 # =====
+# - Add parameter to --ask-pass.
 # - Reverse chunk process.
 # - Replication lag detection.
 # - Add pid control to prevent the same execution command.
+# - Add parameter to --execute statement, is a another option of use template.
 #
 
 use strict;
@@ -95,7 +98,7 @@ my %opt = (
   "user"  => "root",
   "port"  => 3306,
   "sleep" => 0,
-  "chunk" => 100,
+  "chunk" => 1000,
   "start" => 0,
   "end"   => 0,
   "key"   => "id",
@@ -132,9 +135,13 @@ unless (
 }
 
 # --- Define basic variables ---------------------------------------------------
+my $chunk_duration   = 0;
+my $chunk_eta        = 0;
 my $chunk_end        = 0;
+my $chunk_end_time   = 0;
 my $chunk_percentage = 0;
 my $chunk_start      = 0;
+my $chunk_start_time = 0;
 my $chunk_total      = 0;
 my $dsn              = '';
 my $row_count        = 0;
@@ -142,19 +149,20 @@ my $row_delta        = 0;
 my $row_total        = 0;
 my $sql_count        = '';
 my $sql_template     = '';
+my $sql              = '';
 my $sth;
 my $table            = $opt{table};
-my $template         = '';
+my $file_template    = '';
 
 # --- Prepare SQL from template ------------------------------------------------
 #
 # Load template from file
 open my $file, '<', $opt{template} or die "Could not open template: $opt{template}\n";
 
-$template = do { local $/; <$file> };
+$file_template = do { local $/; <$file> };
 
 # Clear string
-$sql_template = join(' ', $template);
+$sql_template = join(' ', $file_template);
 $sql_template =~ s/\n//g;
 $sql_template =~ s/ +/ /g;
 
@@ -202,7 +210,7 @@ $sth->finish;
 
 $row_delta   = $opt{chunk} * 2;
 $row_total   = $row_count + $row_delta;
-$chunk_total = $row_total / $opt{chunk};
+$chunk_total = ceil($row_total / $opt{chunk});
 
 print "Calculator summary:\n";
 print " - Max rows in table: $row_count \n";
@@ -213,37 +221,46 @@ print " - Number of chunks: $chunk_total\n";
 print "\n";
 
 # --- Chunk loop ---------------------------------------------------------------
-for (my $row_id=1; $row_id <= $chunk_total; $row_id++) {
+for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
+  # Get start of execution time
+  $chunk_start_time = time;
+
   # Calculate chunk
-  $chunk_start      = (($row_id * $opt{chunk}) - $opt{chunk}) + 1;
-  $chunk_end        = ($row_id * $opt{chunk});
-  $chunk_percentage = ((100 * $row_id) / $chunk_total);
+  $chunk_start      = (($chunk_position * $opt{chunk}) - $opt{chunk}) + 1;
+  $chunk_end        = ($chunk_position * $opt{chunk});
+  $chunk_percentage = ((100 * $chunk_position) / $chunk_total);
   $chunk_percentage = sprintf("%.0f", $chunk_percentage);
 
   # Resume process with start and end table id
   if ($opt{start} > 0 && $chunk_end <= $opt{start}) {
-    &log($row_id, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
+    # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
     next;
   }
 
   if ($opt{end} > 0 && $chunk_start > $opt{end}) {
-    &log($row_id, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
+    # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
     next;
   }
 
   # Add variables into template
-  $sql_template =~ s/\[TABLE\]/$table/g;
-  $sql_template =~ s/\[START\]/$chunk_start/g;
-  $sql_template =~ s/\[END\]/$chunk_end/g;
+  $sql = $sql_template;
+  $sql =~ s/\[TABLE\]/$table/g;
+  $sql =~ s/\[START\]/$chunk_start/g;
+  $sql =~ s/\[END\]/$chunk_end/g;
 
   # Execute query
-  &log($row_id, $chunk_percentage, $chunk_start, $chunk_end, 'Applying...');
+  &log($chunk_position, $chunk_percentage, $chunk_eta, $chunk_start, $chunk_end);
 
-  $sth = $dbh->prepare($sql_template);
+  $sth = $dbh->prepare($sql);
   $sth->execute or die "SQL Error: $DBI::errstr\n";
 
   # Wait N seconds
   sleep($opt{sleep});
+
+  # Calculate execution time:
+  $chunk_end_time  = time - $chunk_start_time;
+  $chunk_duration  = ceil(($chunk_end_time + $chunk_duration) / 2);
+  $chunk_eta       = (($chunk_total - $chunk_position) - 1) * $chunk_duration;
 }
 
 # --- Disconnect from the MySQL database ---------------------------------------
@@ -255,15 +272,24 @@ sub usage {
 }
 
 sub log {
-  my ($chunk, $percentage, $start, $end, $message) = @_;
+  my ($chunk, $percentage, $eta, $start, $end) = @_;
   my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
+
   my $timestamp;
 
+  my $hours   = int( $eta / (60*60));
+  my $minutes = int(($eta - $hours*60*60) / (60));
+  my $seconds = int( $eta - ($hours*60*60) - ($minutes*60));
+
+  $hours      = sprintf("%.2d", $hours);
+  $minutes    = sprintf("%.2d", $minutes);
+  $seconds    = sprintf("%.2d", $seconds);
   $chunk      = sprintf("%*d", length($chunk_total), $chunk);
   $end        = sprintf("%*d", length($row_total), $end);
   $start      = sprintf("%*d", length($row_total), $start);
   $percentage = sprintf("%3d", $percentage);
   $timestamp  = strftime "%Y/%m/%d %H:%M:%S", localtime;
+  $eta        = "$hours:$minutes:$seconds";
 
-  print "$timestamp $chunk/$chunk_total $percentage% ($start, $end) $message\n";
+  print "$timestamp -- Chunk: $chunk/$chunk_total, $percentage%, ETA: $eta ($start, $end)\n";
 }
