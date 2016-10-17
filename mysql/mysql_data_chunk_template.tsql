@@ -1,0 +1,1 @@
+UPDATE [TABLE] SET amount = 1 WHERE payment_id BETWEEN [START] AND [END]

@@ -37,9 +37,10 @@
 # =====
 # - Add parameter to --ask-pass.
 # - Reverse chunk process.
-# - Replication lag detection.
+# - Replication lag detection to wait.
 # - Add pid control to prevent the same execution command.
 # - Add parameter to --execute statement, is a another option of use template.
+# - Backup data changed.
 #
 
 use strict;
@@ -58,7 +59,7 @@ if ( $@ ) {
 }
 
 # --- Define command line ------------------------------------------------------
-our $VERSION = '0.1.0';
+our $VERSION = '0.2.0';
 my $OPTIONS = <<"_OPTIONS";
 
 MySQL Data Chunk Script
@@ -80,6 +81,8 @@ Usage: $0 --schema=sakila --table=film --key=film_id --template=template.txt
   -c, --chunk=#        Define chunk size
   -s, --start=#        Start chunk from ID
   -e, --end=#          End chunk to ID
+      --dry-run        Run in test mode (autocommit=0)
+      --debug          Debug mode.
 
 SQL Template example:
 
@@ -109,6 +112,8 @@ Getopt::Long::Configure(qw(no_ignore_case));
 
 GetOptions(\%opt,
   "help",
+  "dry-run",
+  "debug",
   "host|h=s",
   "user|u=s",
   "password|p=s",
@@ -147,6 +152,7 @@ my $dsn              = '';
 my $row_count        = 0;
 my $row_delta        = 0;
 my $row_total        = 0;
+my $row_affected     = 0;
 my $sql_count        = '';
 my $sql_template     = '';
 my $sql              = '';
@@ -163,7 +169,7 @@ $file_template = do { local $/; <$file> };
 
 # Clear string
 $sql_template = join(' ', $file_template);
-$sql_template =~ s/\n//g;
+$sql_template =~ s/\n/ /g;
 $sql_template =~ s/ +/ /g;
 
 # Validate template
@@ -181,16 +187,22 @@ if (index($sql_template, '[END]') == -1) {
 
 # --- Connect to the database --------------------------------------------------
 my $dbh;
+my $autocommit = 1;
+
 $dsn  = ";host=$opt{host}";
 $dsn .= ";port=$opt{port}";
 $dsn .= ";database=$opt{schema}";
+
+if ($opt{'dry-run'}) {
+  $autocommit = 0;
+}
 
 eval {
   $dbh = DBI->connect("dbi:mysql:$dsn;", $opt{user}, $opt{password},
   {
     RaiseError => 0,
     PrintError => 0,
-    AutoCommit => 1,
+    AutoCommit => $autocommit,
   }) or die $DBI::errstr . "\n";
 };
 
@@ -212,13 +224,8 @@ $row_delta   = $opt{chunk} * 2;
 $row_total   = $row_count + $row_delta;
 $chunk_total = ceil($row_total / $opt{chunk});
 
-print "Calculator summary:\n";
-print " - Max rows in table: $row_count \n";
-print " - Delta: $row_delta\n";
-print " - Total: $row_total\n";
-print " - Chunk size: $opt{chunk}\n";
-print " - Number of chunks: $chunk_total\n";
-print "\n";
+&info("Max rows in table: $row_count, Delta: $row_delta, Total: $row_total, Chunk size: $opt{chunk}, Number of chunks: $chunk_total");
+&debug($sql_count);
 
 # --- Chunk loop ---------------------------------------------------------------
 for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
@@ -250,18 +257,25 @@ for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
 
   # Execute query
   &log($chunk_position, $chunk_percentage, $chunk_eta, $chunk_start, $chunk_end);
+  &debug($sql);
 
   $sth = $dbh->prepare($sql);
-  $sth->execute or die "SQL Error: $DBI::errstr\n";
+  $sth->execute or die "SQL: $sql\nSQL Error: $DBI::errstr\n";
+  $row_affected += $sth->rows;
+
+  &debug("Rows Affected: " . $sth->rows);
 
   # Wait N seconds
   sleep($opt{sleep});
 
   # Calculate execution time:
-  $chunk_end_time  = time - $chunk_start_time;
-  $chunk_duration  = ceil(($chunk_end_time + $chunk_duration) / 2);
-  $chunk_eta       = (($chunk_total - $chunk_position) - 1) * $chunk_duration;
+  $chunk_end_time = time - $chunk_start_time;
+  $chunk_duration = ceil(($chunk_end_time + $chunk_duration) / 2);
+  $chunk_eta      = (($chunk_total - $chunk_position) - 1) * $chunk_duration;
 }
+
+# --- Summary ------------------------------------------------------------------
+&summary("Total rows affected: $row_affected");
 
 # --- Disconnect from the MySQL database ---------------------------------------
 $dbh->disconnect;
@@ -269,6 +283,29 @@ $dbh->disconnect;
 # --- Start subroutine ---------------------------------------------------------
 sub usage {
   die @_, $OPTIONS;
+}
+
+sub summary {
+  my ($message) = @_;
+  my $timestamp = strftime "%Y/%m/%d %H:%M:%S", localtime;
+
+  print "$timestamp -- Chunk Summary: $message\n";
+}
+
+sub info {
+  my ($message) = @_;
+  my $timestamp = strftime "%Y/%m/%d %H:%M:%S", localtime;
+
+  print "$timestamp -- Chunk Info: $message\n";
+}
+
+sub debug {
+  my ($sql) = @_;
+
+  if ($opt{debug}) {
+    print ' ' x 23;
+    print "Debug: $sql\n";
+  }
 }
 
 sub log {
