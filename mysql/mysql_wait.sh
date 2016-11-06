@@ -33,7 +33,7 @@ EOF
 log()
 {
   MESSAGE=$1
-  echo $(date '+%Y-%m-%d %H:%M:%S')" - ${MESSAGE}"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - ${MESSAGE}"
 }
 
 while [ $# -gt 0 ]; do

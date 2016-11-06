@@ -31,7 +31,7 @@ EOF
 log()
 {
   MESSAGE=$1
-  echo $(date '+%Y-%m-%d %H:%M:%S')" - ${MESSAGE}"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - ${MESSAGE}"
 }
 
 while [ $# -gt 0 ]; do
@@ -59,24 +59,24 @@ fi
 # ==============================================================================
 
 # Skip Repl Error in Prod Slave05:
-ERROR=`mysql --login-path=$LOGIN_PATH \
+ERROR=$(mysql --login-path="$LOGIN_PATH" \
              -Bse 'SHOW SLAVE STATUS\G' \
-       | \
-       grep 'Last_SQL_Error:' \
-       | \
-       sed -e 's/ *Last_SQL_Error: //'`
+        | \
+        grep 'Last_SQL_Error:' \
+        | \
+        sed -e 's/ *Last_SQL_Error: //')
 
 if [ -n "$ERROR" ]; then
   log "$ERROR"
 
-  mysql --login-path=$LOGIN_PATH \
+  mysql --login-path="$LOGIN_PATH" \
         -Bse 'STOP SLAVE; SET GLOBAL SQL_SLAVE_SKIP_COUNTER = 1; START SLAVE;'
 else
-  SBM=`mysql --login-path=$LOGIN_PATH \
+  SBM=$(mysql --login-path="$LOGIN_PATH" \
            -Bse 'SHOW SLAVE STATUS\G' \
-     | \
-     grep Seconds_Behind_Master \
-     | \
-     sed -e 's/ *Seconds_Behind_Master: //'`
+       | \
+       grep Seconds_Behind_Master \
+       | \
+       sed -e 's/ *Seconds_Behind_Master: //')
   log "Seconds Behind Master: ${SBM}"
 fi

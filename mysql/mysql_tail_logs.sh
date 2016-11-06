@@ -26,4 +26,4 @@ do :
   fi
 done
 
-eval $CMD
+eval "$CMD"
