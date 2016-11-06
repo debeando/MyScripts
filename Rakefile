@@ -53,6 +53,8 @@ task :check do
       when '.sh'
         validate("Checking shell script syntax for #{file} ... ",
                  "bash -n #{file} 2>&1")
+        validate("Checking shell script syntax analysis for #{file} ... ",
+                 "shellcheck -x #{file} 2>&1")
       when '.yaml'
         validate("Checking YAML syntax for #{file} ... ",
                  "ruby -ryaml -e \"YAML.parse(File.open('#{file}'))\"  2>&1")

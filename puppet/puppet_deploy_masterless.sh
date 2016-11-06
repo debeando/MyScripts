@@ -78,13 +78,20 @@ export FACTERLIB=/etc/puppetlabs/code/modules/lib/facter
 export PATH=/opt/puppetlabs/bin:$PATH
 
 # Load AWS Credentials, necessary for facter:
-. /root/.aws
+if [ -f "/root/.aws" ]
+then
+  # shellcheck disable=SC1091
+  source /root/.aws
+else
+  echo "AWS credentials not configured."
+  exit 1
+fi
 
 # Deploy puppet:
-cd /etc/puppetlabs/code/
-/usr/bin/git checkout -f $BRANCH
+cd /etc/puppetlabs/code/ || exit 1
+/usr/bin/git checkout -f "$BRANCH"
 /usr/bin/git fetch origin
-/usr/bin/git reset --hard origin/$BRANCH
+/usr/bin/git reset --hard origin/"$BRANCH"
 /usr/bin/git submodule init
 /usr/bin/git submodule sync
 /usr/bin/git submodule update
@@ -107,4 +114,4 @@ CMD+=" | tee -a /var/log/puppetlabs/puppet.log"
 
 # Run Puppet locally using puppet apply:
 echo "Run puppet..."
-eval $CMD
+eval "$CMD"
