@@ -8,6 +8,8 @@
 # The most popular DBA script for MySQL who; Percona ToolKit, MySQL Utilities,
 # MyTop, InnoTOP, and MySQLTuner is written in Perl, because I chose that.
 #
+# This script is compatibility with MySQL, MariaDB and Percona.
+#
 # This is is mature, proven in the real world, and well tested, but all database
 # tools can pose a risk to the system and the database server. Before using this
 # tool, please:
@@ -37,10 +39,15 @@
 # =====
 # - Add parameter to --ask-pass.
 # - Reverse chunk process.
-# - Replication lag detection to wait.
+# - Replication lag detection to wait n seconds.
+# - Replication lag detection to reduce chunk.
 # - Add pid control to prevent the same execution command.
 # - Add parameter to --execute statement, is a another option of use template.
 # - Backup data changed.
+# - Show warnings.
+# - Add test for this.
+# - Load data form file.
+# - Interrup process and wait to complete last execution and show last ID.
 #
 
 use strict;
@@ -263,7 +270,8 @@ for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
   $sth->execute or die "SQL: $sql\nSQL Error: $DBI::errstr\n";
   $row_affected += $sth->rows;
 
-  &debug("Rows Affected: " . $sth->rows);
+  &debug("Rows Matched: " . $sth->rows);
+  &debug("Rows Affected: " . );
 
   # Wait N seconds
   sleep($opt{sleep});
