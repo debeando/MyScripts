@@ -54,6 +54,7 @@ use strict;
 use warnings FATAL => 'all';
 use Getopt::Long;
 use POSIX;
+use Time::HiRes;
 
 eval {
   require DBI;
@@ -66,7 +67,7 @@ if ( $@ ) {
 }
 
 # --- Define command line ------------------------------------------------------
-our $VERSION = '0.2.0';
+our $VERSION = '0.2.1';
 my $OPTIONS = <<"_OPTIONS";
 
 MySQL Data Chunk Script
@@ -107,7 +108,7 @@ my %opt = (
   "host"  => "127.0.0.1",
   "user"  => "root",
   "port"  => 3306,
-  "sleep" => 0,
+  "sleep" => 1,
   "chunk" => 1000,
   "start" => 0,
   "end"   => 0,
@@ -129,7 +130,7 @@ GetOptions(\%opt,
   "template|t=s",
   "key|k=s",
   "schema|d=s",
-  "sleep|S=i",
+  "sleep|S=f",
   "chunk|c=i",
   "start|s=i",
   "end|e=i",
@@ -271,10 +272,9 @@ for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
   $row_affected += $sth->rows;
 
   &debug("Rows Matched: " . $sth->rows);
-  &debug("Rows Affected: " . );
 
   # Wait N seconds
-  sleep($opt{sleep});
+  Time::HiRes::sleep($opt{sleep});
 
   # Calculate execution time:
   $chunk_end_time = time - $chunk_start_time;
