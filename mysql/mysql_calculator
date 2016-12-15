@@ -1,0 +1,218 @@
+#!/usr/bin/env perl
+# -*- mode: perl -*-
+# -*- coding: utf-8 -*-
+# vi: set ft=perl :
+#
+# MySQL Calculator
+#
+# The most popular DBA script for MySQL who; Percona ToolKit, MySQL Utilities,
+# MyTop, InnoTOP, and MySQLTuner is written in Perl, because I chose that.
+#
+# This is is mature, proven in the real world, and well tested, but all database
+# tools can pose a risk to the system and the database server. Before using this
+# tool, please:
+#
+#  - Read the tool’s documentation
+#  - Review the tool’s known "BUGS"
+#  - Test the tool on a non-production server
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# This project would not be possible without help from:
+# - Nicola Strappazzon Carotenuto nicola@swapbytes.com
+#
+# TODO:
+# =====
+# - Add parameter to --ask-pass.
+# - Reverse chunk process.
+# - Replication lag detection.
+# - Add pid control to prevent the same execution command.
+# - Add parameter to --execute statement, is a another option of use template.
+#
+
+use strict;
+use warnings FATAL => 'all';
+use Getopt::Long;
+use POSIX;
+
+eval {
+  require DBI;
+};
+
+if ( $@ ) {
+  die "Perl DBI module id not installed. \n"
+    . "  Debian/Ubuntu apt-get install libdbi-perl\n"
+    . "  RHEL/CentOS   yum install perl-DBI\n";
+}
+
+# --- Define command line ------------------------------------------------------
+our $VERSION = '0.1.0';
+my $OPTIONS = <<"_OPTIONS";
+
+MySQL Data Chunk Script
+
+$0 Ver $VERSION
+
+Usage: $0
+
+  -?, --help           Display this help-screen and exit
+  -u, --user=#         User name for database login
+  -p, --password=#     Password for database login
+  -h, --host=#         Hostname to connecting to the server
+  -P, --port=#         Port nomber to connecting to the server
+
+_OPTIONS
+
+my %opt = (
+  "host"  => "127.0.0.1",
+  "user"  => "root",
+  "port"  => 3306,
+);
+
+# Disambiguate -p and -P
+Getopt::Long::Configure(qw(no_ignore_case));
+
+GetOptions(\%opt,
+  "help",
+  "host|h=s",
+  "user|u=s",
+  "password|p=s",
+  "port|P=i",
+) or usage("Invalid option");
+
+usage() if ($opt{help});
+
+# --- Define basic variables ---------------------------------------------------
+my $dsn; # Database source name
+my $sth; # Statement handle object
+my $dbh; # Database handle object
+
+# --- Connect to the database --------------------------------------------------
+$dsn  = ";host=$opt{host}";
+$dsn .= ";port=$opt{port}";
+
+eval {
+  $dbh = DBI->connect("dbi:mysql:$dsn;", $opt{user}, $opt{password});
+};
+
+if ( $@ =~ m/locate DBD\/mysql/i ) {
+  die "Perl DBI::mysql module id not installed. \n"
+    . "  Debian/Ubuntu apt-get install libdbd-mysql-perl\n"
+    . "  RHEL/CentOS   yum install perl-DBD-MySQL\n";
+}
+# --- Collect variables and status ---------------------------------------------
+# Agregar un metodo que sea collect_variables para luego parsear por get_variable
+# Así se reduce la cantidad de consultas a ejecutar.
+
+sub get_variable {
+  my $variable  = shift;
+  my $statement = "SHOW VARIABLES LIKE '" . $variable . "';";
+  my ($name, $value) = $dbh->selectrow_array($statement);
+
+  return $value;
+}
+
+my $variables = {
+  'max_heap_table_size'             => get_variable('max_heap_table_size'),
+  'aria_pagecache_buffer_size'      => get_variable('aria_pagecache_buffer_size'),
+  'binlog_cache_size'               => get_variable('binlog_cache_size'),
+  'innodb_additional_mem_pool_size' => get_variable('innodb_additional_mem_pool_size'),
+  'innodb_buffer_pool_size'         => get_variable('innodb_buffer_pool_size'),
+  'innodb_log_buffer_size'          => get_variable('innodb_log_buffer_size'),
+  'join_buffer_size'                => get_variable('join_buffer_size'),
+  'key_buffer_size'                 => get_variable('key_buffer_size'),
+  'max_connections'                 => get_variable('max_connections'),
+  'query_cache_size'                => get_variable('query_cache_size'),
+  'read_buffer_size'                => get_variable('read_buffer_size'),
+  'read_rnd_buffer_size'            => get_variable('read_rnd_buffer_size'),
+  'sort_buffer_size'                => get_variable('sort_buffer_size'),
+  'thread_stack'                    => get_variable('thread_stack'),
+  'tmp_table_size'                  => get_variable('tmp_table_size'),
+};
+
+foreach my $key (keys %$variables) {
+  print "$key => $variables->{$key}\n";
+}
+
+print '=' x 80;
+print "\n";
+
+my $global_buffers = $variables->{'max_heap_table_size'} +
+                     $variables->{'key_buffer_size'} +
+                     $variables->{'innodb_buffer_pool_size'} +
+                     $variables->{'innodb_log_buffer_size'} +
+                     $variables->{'innodb_additional_mem_pool_size'} +
+                     $variables->{'query_cache_size'} +
+                     $variables->{'aria_pagecache_buffer_size'};
+my $thread_buffers = $variables->{'sort_buffer_size'} +
+                     $variables->{'thread_stack'} +
+                     $variables->{'join_buffer_size'} +
+                     $variables->{'read_buffer_size'} +
+                     $variables->{'read_rnd_buffer_size'} +
+                     $variables->{'binlog_cache_size'};
+
+# my $max_connections = ( 1024*1024*1024 - $global_buffers ) / $thread_buffers;
+
+$thread_buffers = $thread_buffers / 1024 / 1024;
+print "thread_buffers: $thread_buffers\n";
+# total_per_thread_buffers
+my $total_thread_buffers = $thread_buffers * ( $variables->{'max_connections'} - 1);
+print "total thread_buffers: $total_thread_buffers\n";
+
+$global_buffers = $global_buffers / 1024 / 1024;
+print "global_buffers: $global_buffers\n";
+
+my $max_memory_usage = $total_thread_buffers + $global_buffers;
+print "Max Memory Usage: $max_memory_usage\n";
+
+print "max connections: $variables->{'max_connections'}";
+print "\n";
+
+# my $a = (
+#           $variables->{'key_buffer_size'} +
+#           $variables->{'query_cache_size'} +
+#           $variables->{'tmp_table_size'} +
+#           $variables->{'max_tmp_table_size'} +
+#           $variables->{'innodb_buffer_pool_size'} +
+#           $variables->{'innodb_additional_mem_pool_size'} +
+#           $variables->{'innodb_log_buffer_size'} +
+#           $variables->{'max_connections'} *
+#         (
+#           $variables->{'sort_buffer_size'} +
+#           $variables->{'read_buffer_size'} +
+#           $variables->{'read_rnd_buffer_size'} +
+#           $variables->{'join_buffer_size'} +
+#           $variables->{'thread_stack'} +
+#           $variables->{'binlog_cache_size'}
+#         )
+#       ) / 1024 / 1024 / 1024;
+
+# print "GB.: $a";
+# print "\n";
+
+# my $max_memory_usage = ( $variables->{'innodb_buffer_pool_size'} +
+#                          $variables->{'key_buffer_size'} +
+#                          $variables->{'max_connections'} * (
+#                            $variables->{'sort_buffer_size'} +
+#                            $variables->{'read_buffer_size'} +
+#                            $variables->{'binlog_cache_size'}
+#                          ) +
+#                          $variables->{'max_connections'} * 2048
+#                         ) / 1024 / 1024 / 1024;
+
+# print "Max Memory Usage GB.: $max_memory_usage";
+# print "\n";
+
+# --- Disconnect from the MySQL database ---------------------------------------
+$dbh->disconnect;

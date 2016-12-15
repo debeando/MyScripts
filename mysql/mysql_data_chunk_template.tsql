@@ -1,1 +1,1 @@
-UPDATE [TABLE] SET amount = 1 WHERE payment_id BETWEEN [START] AND [END]
+UPDATE [TABLE] SET replacement_cost = 1 WHERE film_id BETWEEN [START] AND [END] AND replacement_cost <> 1

@@ -1,0 +1,51 @@
+#!/usr/bin/env perl
+# -*- mode: perl -*-
+# -*- coding: utf-8 -*-
+# vi: set ft=perl :
+
+use strict;
+use warnings FATAL => 'all';
+use Getopt::Long;
+use POSIX;
+use DBI;
+
+my $search_value    = '';
+my $search_column   = 'last_update';
+my $primary_key     = 0;
+my $primary_key_max = 10;
+my $chunk_size      = 1000;
+
+# $primary_key
+
+# SELECT MIN(last_update) FROM payment WHERE payment_id BETWEEN 0 AND 10;
+# SELECT MAX(last_update) FROM payment WHERE payment_id BETWEEN 0 AND 10;
+# if $min => $search_value and $search_value <= $max
+# -- busca
+# llamo a mi misma pasando los nuevos rangos de busqueda?
+# 1000000
+#
+#
+#
+# 2000000
+# else
+# -- sigue recorriendo por payment_id
+
+sub fib_up_to {
+    # Unpack @_ for readability and maintainability.
+    my ($max, $i, $j) = @_;
+
+    # Handle the first call by the user, who normally would supply only the max.
+    # Note that we test whether $i and $j are defined rather than just
+    # evaluating their truth: 0 is defined but false in Perl.
+    ($i, $j) = (0, 1) unless defined $i and defined $j;
+    return unless defined $max and $max >= 0;
+
+    # Check for terminal condition.
+    return if $i > $max;
+
+    # Do stuff and then recurse.
+    print $i, "\n";
+    fib_up_to($max, $j, $i + $j);
+}
+
+fib_up_to(100);

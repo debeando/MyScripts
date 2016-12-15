@@ -16,7 +16,9 @@ killall -9 mysqld
 truncate -s 0 /var/run/mysqld/mysqld.pid
 
 # Remove old MySQL Data Directory:
-rm -r /var/lib/mysql/*
+rm -rf /var/lib/mysql/*
 
 # Initialize MySQL Data Directory:
 mysql_install_db --user=mysql --datadir=/var/lib/mysql
+
+chown -R mysql. /var/lib/mysql
