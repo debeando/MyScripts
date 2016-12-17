@@ -39,14 +39,16 @@
 # =====
 # - Add parameter to --ask-pass.
 # - Reverse chunk process.
-# - Replication lag detection to wait n seconds.
-# - Replication lag detection to reduce chunk.
+# - Replication lag detection to wait n seconds or reduce chunk.
+#   --slaves=dsn
 # - Add pid control to prevent the same execution command.
 # - Add parameter to --execute statement, is a another option of use template.
 # - Backup data changed.
 # - Show warnings.
 # - Add test for this.
 # - Load data form file.
+#   --columns=a,b,c Especificamos las columnas a insertar según el archivo.
+#   --data=file.csv
 # - Interrup process and wait to complete last execution and show last ID.
 #
 
@@ -291,6 +293,10 @@ $dbh->disconnect;
 # --- Start subroutine ---------------------------------------------------------
 sub usage {
   die @_, $OPTIONS;
+}
+
+sub chunk {
+
 }
 
 sub summary {

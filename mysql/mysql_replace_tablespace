@@ -1,0 +1,191 @@
+#!/usr/bin/env perl
+# -*- mode: perl -*-
+# -*- coding: utf-8 -*-
+# vi: set ft=perl :
+#
+# MySQL Replace Tablespace
+
+# Parameters:
+# - data-dir
+# - backup-dir
+# - schema
+# - table
+
+use strict;
+use threads;
+use threads::shared;
+use warnings FATAL => 'all';
+use Getopt::Long;
+use POSIX;
+
+eval {
+  require DBI;
+};
+
+if ( $@ ) {
+  die "Perl DBI module id not installed. \n"
+    . "  Debian/Ubuntu apt-get install libdbi-perl\n"
+    . "  RHEL/CentOS   yum install perl-DBI\n";
+}
+
+# --- Define command line ------------------------------------------------------
+our $VERSION = '0.1.0';
+my $OPTIONS = <<"_OPTIONS";
+
+MySQL Replace Tablespace
+
+$0 Ver $VERSION
+
+Usage: $0 --schema=sakila --table=film --backup-dir=/tmp/backup
+
+  -?, --help           Display this help-screen and exit
+  -u, --user=#         User name for database login
+  -p, --password=#     Password for database login
+  -h, --host=#         Hostname to connecting to the server
+  -P, --port=#         Port nomber to connecting to the server
+  -d, --schema=#       Schema name
+  -T, --table=#        Table name to chunk
+  -D, --data-dir=#     Data directory
+  -B, --backup-dir=#   Backup directory
+
+_OPTIONS
+
+my %opt = (
+  "host"     => "127.0.0.1",
+  "user"     => "root",
+  "port"     => 3306,
+  "data-dir" => "/var/lib/mysql/",
+);
+
+# Disambiguate -p and -P
+Getopt::Long::Configure(qw(no_ignore_case));
+
+GetOptions(\%opt,
+  "help",
+  "host|h=s",
+  "user|u=s",
+  "password|p=s",
+  "port|P=i",
+  "table|T=s",
+  "schema|d=s",
+  "data-dir|D=s",
+  "backup-dir|B=s",
+) or usage("Invalid option");
+
+usage() if ($opt{help});
+
+# --- Validate required parameter ----------------------------------------------
+unless (
+  defined $opt{'schema'}     &&
+  defined $opt{'table'}      &&
+  defined $opt{'backup-dir'}
+) {
+  usage();
+}
+
+# --- Define basic variables ---------------------------------------------------
+my $lock:shared = 0;
+my $sth;
+my $dsn   = '';
+my $sql   = '';
+my $range = 5;
+my $session_id = 0;
+
+
+# --- Connect to the database --------------------------------------------------
+my $dbh;
+my $autocommit = 1;
+
+$dsn  = ";host=$opt{host}";
+$dsn .= ";port=$opt{port}";
+$dsn .= ";database=$opt{schema}";
+
+eval {
+  $dbh = DBI->connect("dbi:mysql:$dsn;", $opt{user}, $opt{password},
+  {
+    RaiseError => 0,
+    PrintError => 0,
+    AutoCommit => 1,
+  }) or die $DBI::errstr . "\n";
+};
+
+if ( $@ =~ m/locate DBD\/mysql/i ) {
+  die "Perl DBI::mysql module id not installed. \n"
+    . "  Debian/Ubuntu apt-get install libdbd-mysql-perl\n"
+    . "  RHEL/CentOS   yum install perl-DBD-MySQL\n";
+}
+
+# --- Thread for tablespace and file system ------------------------------------
+
+sub tablespace
+{
+  my @args = @_;
+  my $id   = threads->self->tid;
+
+  $sql = "SELECT CONNECTION_ID()";
+  $session_id = @args->selectrow_array($sql) or die "SQL Error: $DBI::errstr\n";
+
+  print("Thread (MySQL Session ID: $session_id) $id tablespace started.\n");
+  print("Thread (MySQL Session ID: $session_id) $id Old Variable: $lock\n");
+
+  # Wait to another thread confirm.
+  while(1) {
+    lock($lock);
+
+    if ($lock == 1) {
+      # Execute ALTER post move table files.
+
+      print("Thread (MySQL Session ID: $session_id) $id Finish!\n");
+
+      # Disconnect from the MySQL database
+      # $sth->finish;
+      $dbh->disconnect;
+
+      # Exit from this threads
+      threads->exit();
+    }
+
+    print("Thread (MySQL Session ID: $session_id) $id wait...\n");
+    sleep(1);
+  }
+
+  print("Thread (MySQL Session ID: $session_id) $id New Variable: $lock\n");
+}
+
+sub filesystem
+{
+  my @args = @_;
+  my $id   = threads->self->tid;
+  my $random_number = 0;
+
+  print("Thread $id filesystem started: ", join(' ', @args), "\n");
+
+  while(1) {
+    $random_number = int(rand($range));
+    print("Thread $id Random Number: $random_number\n");
+    $lock = $random_number;
+    print("Thread $id Variable: $lock\n");
+
+    if ($lock == 1) {
+      print("Thread $id Finish!\n");
+      # exit(0);
+      threads->exit();
+    }
+
+    sleep(1);
+  }
+}
+
+my $thr1 = threads->create('tablespace', $dbh);
+my $thr2 = threads->create('filesystem', 'argument2');
+
+$thr1->join();
+$thr2->join();
+
+# --- Disconnect from the MySQL database ---------------------------------------
+$dbh->disconnect;
+
+# --- Start subroutine ---------------------------------------------------------
+sub usage {
+  die @_, $OPTIONS;
+}
