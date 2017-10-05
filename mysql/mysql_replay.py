@@ -1,9 +1,18 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 #
+# Title           :mysql_replay.py
+# Description     :Replay general log to another server
+# Author          :Nicola Strappazzon C. nicola@swapbytes.com
+# Date            :2017-10-04
+# Version         :0.1
+#
 # ==============================================================================
 # Motivation:
 # ------------------------------------------------------------------------------
+# The idea of this script is to demostrate compatibility SQL between Percona and
+# MySQL on a version 5.5.
+#
 # Many tools replay only "slow log" because have a database name in the table
 # where is stored, and used this tool for create Benchmark when change index or
 # schema in another slave to verify changes on bad queries registered in slow
@@ -148,7 +157,7 @@ class From(Connection):
       # Increase counter to trash mysql.general_log
       counter += 1
 
-      # Caputure queries
+      # Caputure queries from log
       sql = ("SELECT argument "
              "FROM mysql.general_log "
              "WHERE command_type = 'Query' "
@@ -190,7 +199,8 @@ def main():
   # Ignore all warnings messages
   warnings.simplefilter("ignore")
 
-  # Start each replay by database:
+  # Start each thread to replay:
+  # Each thread is a one database and filter.
   threads = []
   for database, filter in Database().list():
     t = threading.Thread(target=replay, args=(database, filter))
