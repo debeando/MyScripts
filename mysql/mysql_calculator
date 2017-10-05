@@ -34,11 +34,8 @@
 #
 # TODO:
 # =====
-# - Add parameter to --ask-pass.
-# - Reverse chunk process.
-# - Replication lag detection.
-# - Add pid control to prevent the same execution command.
-# - Add parameter to --execute statement, is a another option of use template.
+# - Calculate MaxConnection recomended
+# - Calculate MaxConnection actual
 #
 
 use strict;
@@ -71,6 +68,7 @@ Usage: $0
   -p, --password=#     Password for database login
   -h, --host=#         Hostname to connecting to the server
   -P, --port=#         Port nomber to connecting to the server
+  -R, --ram=#          Ram Memory Avaible on the server
 
 _OPTIONS
 
@@ -78,6 +76,7 @@ my %opt = (
   "host"  => "127.0.0.1",
   "user"  => "root",
   "port"  => 3306,
+  "ram"   => 1,
 );
 
 # Disambiguate -p and -P
@@ -89,6 +88,7 @@ GetOptions(\%opt,
   "user|u=s",
   "password|p=s",
   "port|P=i",
+  "ram|R=i",
 ) or usage("Invalid option");
 
 usage() if ($opt{help});
@@ -120,12 +120,11 @@ sub get_variable {
   my $statement = "SHOW VARIABLES LIKE '" . $variable . "';";
   my ($name, $value) = $dbh->selectrow_array($statement);
 
-  return $value;
+  return $value unless 0;
 }
 
 my $variables = {
   'max_heap_table_size'             => get_variable('max_heap_table_size'),
-  'aria_pagecache_buffer_size'      => get_variable('aria_pagecache_buffer_size'),
   'binlog_cache_size'               => get_variable('binlog_cache_size'),
   'innodb_additional_mem_pool_size' => get_variable('innodb_additional_mem_pool_size'),
   'innodb_buffer_pool_size'         => get_variable('innodb_buffer_pool_size'),
@@ -139,80 +138,89 @@ my $variables = {
   'sort_buffer_size'                => get_variable('sort_buffer_size'),
   'thread_stack'                    => get_variable('thread_stack'),
   'tmp_table_size'                  => get_variable('tmp_table_size'),
+  'net_buffer_length'               => get_variable('net_buffer_length'),
+  'myisam_sort_buffer_size'         => get_variable('myisam_sort_buffer_size'),
 };
 
+print '=' x 80;
+print "\n";
+print "Values collected:\n";
+
 foreach my $key (keys %$variables) {
-  print "$key => $variables->{$key}\n";
+  print " - $key => $variables->{$key}\n";
 }
 
 print '=' x 80;
 print "\n";
 
-my $global_buffers = $variables->{'max_heap_table_size'} +
-                     $variables->{'key_buffer_size'} +
-                     $variables->{'innodb_buffer_pool_size'} +
+my $global_buffers = $variables->{'innodb_buffer_pool_size'} +
                      $variables->{'innodb_log_buffer_size'} +
                      $variables->{'innodb_additional_mem_pool_size'} +
-                     $variables->{'query_cache_size'} +
-                     $variables->{'aria_pagecache_buffer_size'};
+                     $variables->{'net_buffer_length'} +
+                     $variables->{'key_buffer_size'} +
+                     $variables->{'query_cache_size'};
+
 my $thread_buffers = $variables->{'sort_buffer_size'} +
                      $variables->{'thread_stack'} +
                      $variables->{'join_buffer_size'} +
                      $variables->{'read_buffer_size'} +
                      $variables->{'read_rnd_buffer_size'} +
-                     $variables->{'binlog_cache_size'};
+                     $variables->{'myisam_sort_buffer_size'};
 
 # my $max_connections = ( 1024*1024*1024 - $global_buffers ) / $thread_buffers;
 
-$thread_buffers = $thread_buffers / 1024 / 1024;
-print "thread_buffers: $thread_buffers\n";
+#$thread_buffers = $thread_buffers / 1024 / 1024;
+#print "thread_buffers: $thread_buffers\n";
 # total_per_thread_buffers
-my $total_thread_buffers = $thread_buffers * ( $variables->{'max_connections'} - 1);
-print "total thread_buffers: $total_thread_buffers\n";
+#my $total_thread_buffers = $thread_buffers * ( $variables->{'max_connections'} - 1);
+#print "total thread_buffers: $total_thread_buffers\n";
 
-$global_buffers = $global_buffers / 1024 / 1024;
-print "global_buffers: $global_buffers\n";
+#$global_buffers = $global_buffers / 1024 / 1024;
+#print "global_buffers: $global_buffers\n";
 
-my $max_memory_usage = $total_thread_buffers + $global_buffers;
-print "Max Memory Usage: $max_memory_usage\n";
+#my $max_memory_usage = $total_thread_buffers + $global_buffers;
+#print "Max Memory Usage: $max_memory_usage\n";
 
-print "max connections: $variables->{'max_connections'}";
+print "max_connections = $variables->{'max_connections'}";
 print "\n";
 
-# my $a = (
-#           $variables->{'key_buffer_size'} +
-#           $variables->{'query_cache_size'} +
-#           $variables->{'tmp_table_size'} +
-#           $variables->{'max_tmp_table_size'} +
-#           $variables->{'innodb_buffer_pool_size'} +
-#           $variables->{'innodb_additional_mem_pool_size'} +
-#           $variables->{'innodb_log_buffer_size'} +
-#           $variables->{'max_connections'} *
-#         (
-#           $variables->{'sort_buffer_size'} +
-#           $variables->{'read_buffer_size'} +
-#           $variables->{'read_rnd_buffer_size'} +
-#           $variables->{'join_buffer_size'} +
-#           $variables->{'thread_stack'} +
-#           $variables->{'binlog_cache_size'}
-#         )
-#       ) / 1024 / 1024 / 1024;
+#my $a = (
+#          $variables->{'key_buffer_size'} +
+#          $variables->{'query_cache_size'} +
+#          $variables->{'tmp_table_size'} +
+#          $variables->{'max_tmp_table_size'} +
+#          $variables->{'innodb_buffer_pool_size'} +
+#          $variables->{'innodb_additional_mem_pool_size'} +
+#          $variables->{'innodb_log_buffer_size'} +
+#          $variables->{'max_connections'} *
+#        (
+#          $variables->{'sort_buffer_size'} +
+#          $variables->{'read_buffer_size'} +
+#          $variables->{'read_rnd_buffer_size'} +
+#          $variables->{'join_buffer_size'} +
+#          $variables->{'thread_stack'} +
+#          $variables->{'binlog_cache_size'}
+#        )
+#      ) / 1024 / 1024 / 1024;
+#
+#print "GB.: $a";
+#print "\n";
 
-# print "GB.: $a";
-# print "\n";
+print '=' x 80;
+print "\n";
+print "Suggest\n";
 
-# my $max_memory_usage = ( $variables->{'innodb_buffer_pool_size'} +
-#                          $variables->{'key_buffer_size'} +
-#                          $variables->{'max_connections'} * (
-#                            $variables->{'sort_buffer_size'} +
-#                            $variables->{'read_buffer_size'} +
-#                            $variables->{'binlog_cache_size'}
-#                          ) +
-#                          $variables->{'max_connections'} * 2048
-#                         ) / 1024 / 1024 / 1024;
+my $max_connections = (($opt{ram} * 1024 * 1024 * 1024) - $global_buffers) / $thread_buffers;
+print "max_connections = $max_connections";
+print "\n";
 
-# print "Max Memory Usage GB.: $max_memory_usage";
-# print "\n";
+my $max_memory_usage = (($global_buffers +
+                         $variables->{'max_connections'}
+                        ) *
+                        $thread_buffers
+                       ) / 1073741824;
+print "max_memory_usage = $max_memory_usage";
+print "\n";
 
 # --- Disconnect from the MySQL database ---------------------------------------
 $dbh->disconnect;
