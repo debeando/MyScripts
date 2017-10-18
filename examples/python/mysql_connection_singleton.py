@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import pymysql
+import sys
+import time
 
 class Connection(object):
   _connection  = None;
@@ -18,10 +20,12 @@ class Connection(object):
     try:
       Connection._connection = pymysql.connect(
         host        = '127.0.0.1',
-        port        = 33061,
-        user        = 'admin',
-        password    = 'admin',
+        port        = 3306,
+        user        = 'root',
+        password    = '',
         charset     = 'utf8mb4',
+        autocommit  = True,
+        use_unicode = True,
         cursorclass = pymysql.cursors.DictCursor
       )
     except Exception as e:
@@ -33,32 +37,39 @@ class Connection(object):
 
   def close(self):
     try:
-      while not Connection._connection.is_empty():
-        Connection._connection.close();
+      Connection._connection.close();
     except:
       pass;
 
-  def fetchone(self, sql):
-    cursor = Connection._connection.cursor()
-    cursor.execute(sql)
-    result = cursor.fetchone()
-    cursor.close()
-    return result
+  def query(self, sql):
+    try:
+      Connection._connection.ping()
+      cursor = Connection._connection.cursor()
+      cursor.execute(sql)
+      result = cursor.fetchall()
+      cursor.close()
+      return result
+    except Exception as e:
+      print("ERROR: " + str(e))
+      pass
 
 a = Connection()
 a.connect()
-print(a.fetchone('SELECT connection_id(), database()'))
+print(a.query('SELECT connection_id(), database()'))
 a.database('mysql')
-print(a.fetchone('SELECT connection_id(), database()'))
+print(a.query('SELECT connection_id(), database()'))
 
 c = Connection()
 c.connect()
-print(c.fetchone('SELECT connection_id(), database()'))
+print(c.query('SELECT connection_id(), database()'))
 c.database('mysql')
-print(c.fetchone('SELECT connection_id(), database()'))
+time.sleep(10)
+print(c.query('SELECT connection_id(), database()'))
 
 b = Connection()
 b.instance()
-print(b.fetchone('SELECT connection_id(), database()'))
+print(b.query('SELECT connection_id(), database()'))
 b.database('mysql')
-print(b.fetchone('SELECT connection_id(), database()'))
+print(b.query('SELECT connection_id(), database()'))
+b.close()
+time.sleep(10)
