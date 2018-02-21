@@ -1,10 +1,8 @@
-#!/usr/local/bin/python3.6
+#!/usr/bin/python
 # -*- coding: utf8 -*-
 
-import configparser
 import optparse
 import os
-import pymysql
 import re
 
 config_values  = None
@@ -12,29 +10,51 @@ mysql_values   = None
 default_values = None
 
 ignore_variable = [
+  'basedir',
+  'datadir',
   'innodb-buffer-pool-instances',
   'innodb-file-format-max',
+  'innodb-ibuf-max-size',
   'innodb-io-capacity-max',
   'innodb-open-files',
   'innodb-page-cleaners',
   'innodb-use-native-aio',
   'large-page-size',
+  'log',
+  'log-bin',
   'log-error',
   'log-error-verbosity',
   'log-warnings',
   'optimizer-trace',
   'pid-file',
   'report-port',
-  'sql-slave-skip-counter',
+  'skip-external-locking',
+  'sql-slave-skip-counter'
 ]
 
+def install_and_import(package):
+  import importlib
+  try:
+    importlib.import_module(package)
+  except ImportError:
+    import pip
+    pip.main(['install', package])
+  finally:
+    globals()[package] = importlib.import_module(package)
+
 def num(s):
+  if not s:
+    s = 0
+
   try:
     return int(s)
   except ValueError:
     return float(s)
 
 def is_num(s):
+  if not s:
+    s = 0
+
   try:
     complex(s)
   except ValueError:
@@ -44,7 +64,7 @@ def is_num(s):
 
 def load_config_values(path):
   if os.path.isfile(path):
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(allow_no_value = True, strict = False)
     config.read(path)
     return config
   else:
@@ -73,7 +93,7 @@ def load_mysql_values(host, port, user, password):
   return result
 
 def load_default_values():
-  command = "mysqld --verbose --help"
+  command = "mysqld --verbose --help 2>/dev/null"
   value = os.popen(command).read()
   value = str(value)
   value = value.strip()
@@ -85,7 +105,7 @@ def parse_default_values():
 
   # Extract only variables and values:
   match     = re.search(r'\-{3,}\s\-{3,}\n(?P<variables>[\s\S]+)\n\n', default, re.MULTILINE)
-  variables = match['variables']
+  variables = match.group(1)
 
   # Parse variables and values:
   regex   = re.compile(r'(?P<variable>[\w\-]+)\s+(?P<value>.*)', re.MULTILINE)
@@ -95,7 +115,12 @@ def parse_default_values():
 
 def get_config_variable(variable_name):
   if variable_name in config_values['mysqld']:
-    return config_values['mysqld'][variable_name]
+    value = config_values['mysqld'][variable_name]
+
+    if is_num(value):
+      value = num(value)
+
+    return value
 
 def get_default_value(variable_name):
   value = None
@@ -136,6 +161,8 @@ def compare_variables():
 
     if var["config"] == None and var["current"] == var["default"]:
       var["valid"] = True
+    elif var["config"] == None and var["default"] == None and var["current"] == 0:
+      var["valid"] = True
     elif var["config"] == var["current"] and var["default"] != var["current"]:
       var["valid"] = True
     elif var["config"] == var["current"] == var["default"]:
@@ -157,6 +184,9 @@ def compare_variables():
   exit(invalid)
 
 if __name__ == '__main__':
+  install_and_import('configparser')
+  install_and_import('pymysql')
+
   parser = optparse.OptionParser("usage: %prog [options]", version="0.1.0")
   parser.add_option("-H", "--host",
                     default = "127.0.0.1",
