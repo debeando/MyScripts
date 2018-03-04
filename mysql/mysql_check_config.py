@@ -152,7 +152,7 @@ def compare_variables():
     # Print only suspicious variables:
     if var["valid"] == False:
       invalid += 1
-      print(var)
+#      print(var)
 
   exit(invalid)
 
@@ -187,3 +187,8 @@ if __name__ == '__main__':
   default_values = parse_default_values()
 
   compare_variables()
+
+
+#--collector.textfile.directory
+#
+#mysql_check_default_config 2
