@@ -1,18 +1,9 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 #
-# Title           :mysql_replay.py
-# Description     :Replay general log to another server
-# Author          :Nicola Strappazzon C. nicola@swapbytes.com
-# Date            :2017-10-04
-# Version         :0.1
-#
 # ==============================================================================
 # Motivation:
 # ------------------------------------------------------------------------------
-# The idea of this script is to demostrate compatibility SQL between Percona and
-# MySQL on a version 5.5.
-#
 # Many tools replay only "slow log" because have a database name in the table
 # where is stored, and used this tool for create Benchmark when change index or
 # schema in another slave to verify changes on bad queries registered in slow
@@ -97,7 +88,9 @@ class Connection(Config):
     Config.__init__(self, name)
 
     self._config['database'] = database
+    self.connect()
 
+  def connect(self):
     try:
       self._connection = pymysql.connect(
         host        = self._config['host'],
@@ -115,35 +108,29 @@ class Connection(Config):
       sys.exit();
 
   def execute(self, sql):
-    try:
-      Log().debug(self._config['host'], self._config['database'], sql)
-      cursor = self._connection.cursor()
-      cursor.execute(sql)
-      cursor.close()
-    except Exception as e:
-      Log().error(self._config['host'], self._config['database'], json.dumps(
-        [{
-          'code':    e[0],
-          'message': e[1],
-          'sql':     sql}
-        ])
-      )
-
-  def fetchone(self, sql):
-    Log().info(self._config['host'], self._config['database'], sql)
-    cursor = self._connection.cursor()
-    cursor.execute(sql)
-    result = cursor.fetchone()
-    cursor.close()
-    return result
-
-  def fetchall(self, sql):
-    Log().info(self._config['host'], self._config['database'], sql)
-    cursor = self._connection.cursor()
-    cursor.execute(sql)
-    result = cursor.fetchall()
-    cursor.close()
-    return result
+    while True:
+      try:
+        Log().debug(self._config['host'], self._config['database'], sql)
+        cursor = self._connection.cursor()
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        cursor.close()
+        return result
+      except pymysql.err.OperationalError as e:
+         Log().error(self._config['host'], self._config['database'], json.dumps(
+           [{
+             'code':    e[0],
+             'message': e[1],
+             'sql':     sql}
+           ])
+         )
+         if (e[0] == 2013):
+           print("ERROR: MySQL Lost connection, retry... " + str(e))
+           self.connect()
+           continue
+      except Exception as e:
+        print('ERROR: {!r}, errno is {}'.format(e, e.args[0]))
+      break
 
 class From(Connection):
   def __init__(self, database):
@@ -151,13 +138,13 @@ class From(Connection):
 
   def read(self, filter):
     counter = 0
-    result  = self.fetchone('SELECT connection_id() AS connection_id')
+    result  = self.execute('SELECT connection_id() AS connection_id')
 
     while True:
       # Increase counter to trash mysql.general_log
       counter += 1
 
-      # Caputure queries from log
+      # Caputure queries
       sql = ("SELECT argument "
              "FROM mysql.general_log "
              "WHERE command_type = 'Query' "
@@ -167,10 +154,10 @@ class From(Connection):
              "AND event_time = NOW() - INTERVAL 1 SECOND"
              % (
               filter,
-              result['connection_id']
+              result[0]['connection_id']
             ))
 
-      results = self.fetchall(sql)
+      results = self.execute(sql)
 
       for row in results:
         yield row['argument']
@@ -199,8 +186,7 @@ def main():
   # Ignore all warnings messages
   warnings.simplefilter("ignore")
 
-  # Start each thread to replay:
-  # Each thread is a one database and filter.
+  # Start each replay by database:
   threads = []
   for database, filter in Database().list():
     t = threading.Thread(target=replay, args=(database, filter))
