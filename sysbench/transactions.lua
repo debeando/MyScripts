@@ -84,6 +84,9 @@ function thread_init()
   first_name_max  = con:query_row("SELECT MAX(id) FROM random WHERE attribute_type = 'FirstName'")
   last_name_min   = con:query_row("SELECT MIN(id) FROM random WHERE attribute_type = 'LastName'")
   last_name_max   = con:query_row("SELECT MAX(id) FROM random WHERE attribute_type = 'LastName'")
+
+  -- print("Disable auto-commit")
+  -- con:query("SET autocommit = OFF")
 end
 
 function event ()
@@ -97,13 +100,34 @@ function event ()
   local domain_name       = con:query_row(string.format(attribute_sql, domain_name_index))
   local first_name        = con:query_row(string.format(attribute_sql, first_name_index))
   local last_name         = nil
+  local status_value      = status_values[status_index]
 
   pcall(function () last_name = con:query_row(string.format(attribute_sql, last_name_index)) end)
 
+  local username      = string.format("%s.%s", first_name, last_name):lower()
+  local username      = string.gsub(username,"'","")
+  local email         = string.format("%s%s@%s", username, sb_rand(0, 1000), domain_name):lower()
+  local password_hash = sb_rand_str(string.rep("@", sb_rand(8, 16)))
 
-  local email = string.format("%s.%s@%s", first_name, last_name, domain_name):lower()
+  sql = [[
+    INSERT IGNORE INTO users (
+      email,
+      username,
+      password_hash,
+      first_name,
+      last_name,
+      status
+    ) VALUES (
+      '%s',
+      '%s',
+      MD5('%s'),
+      "%s",
+      "%s",
+      '%s'
+    )
+  ]]
 
-  print(email)
+  con:query(string.format(sql, email, username, password_hash, first_name, last_name, status_value))
 end
 
 function thread_done()
