@@ -55,7 +55,7 @@ function prepare()
       status        ENUM('Enable', 'Disable', 'ChangePassword'),
       created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      deleted_at    TIMESTAMP DEFAULT '0000-00-00 00:00:00',
+      deleted_at    TIMESTAMP NULL DEFAULT NULL,
       PRIMARY KEY (id),
       UNIQUE KEY email_uid (email),
       UNIQUE KEY username_uid (username)
