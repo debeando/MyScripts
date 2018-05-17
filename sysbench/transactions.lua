@@ -128,6 +128,19 @@ function event ()
   ]]
 
   con:query(string.format(sql, email, username, password_hash, first_name, last_name, status_value))
+
+  -- Execute randomly bad query:
+  if math.random(10) == 1 then
+    sql = [[
+      SELECT DISTINCT
+        SUBSTRING_INDEX(SUBSTR(email, INSTR(email, '@') + 1),'.',1) AS domainname,
+        COUNT(id)
+      FROM users
+      GROUP BY domainname;
+    ]]
+
+    con:query(sql)
+  end
 end
 
 function thread_done()
