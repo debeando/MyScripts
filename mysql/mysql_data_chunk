@@ -69,7 +69,7 @@ if ( $@ ) {
 }
 
 # --- Define command line ------------------------------------------------------
-our $VERSION = '0.2.1';
+our $VERSION = '0.3.0';
 my $OPTIONS = <<"_OPTIONS";
 
 MySQL Data Chunk Script
@@ -87,6 +87,7 @@ Usage: $0 --schema=sakila --table=film --key=film_id --template=template.txt
   -T, --table=#        Table name to chunk
   -t, --template=#     SQL template file
   -k, --key=#          Primary Key name
+  -f  --fileids=#      File with Primary/Foreign Key list
   -S, --sleep=#        Time sleep between chunk
   -c, --chunk=#        Define chunk size
   -s, --start=#        Start chunk from ID
@@ -98,11 +99,14 @@ SQL Template example:
 
   UPDATE [TABLE] SET last_update = NOW() WHERE film_id BETWEEN [START] AND [END];
 
+  UPDATE [TABLE] SET last_update = NOW() WHERE film_id IN ([FILE_IDS]);
+
 SQL Template Variables:
 
-  - [TABLE]   Table name when apply UPDATE or DELETE or INSERT
-  - [START]   Primary Key (ID) to start on table.
-  - [END]     Primary Key (ID) to end on table.
+  - [TABLE]    Table name when apply UPDATE or DELETE or INSERT
+  - [START]    Primary Key (ID) to start on table.
+  - [END]      Primary Key (ID) to end on table.
+  - [FILE_IDS] Chunk list of Primary/Foreign KEY from file. (--file-ids)
 
 _OPTIONS
 
@@ -131,6 +135,7 @@ GetOptions(\%opt,
   "table|T=s",
   "template|t=s",
   "key|k=s",
+  "fileids|f=s",
   "schema|d=s",
   "sleep|S=f",
   "chunk|c=i",
@@ -149,33 +154,56 @@ unless (
   usage();
 }
 
+# Validar combinacion de variables:
+# if file_ids > 0 no puede haber definido start ni end.
+
 # --- Define basic variables ---------------------------------------------------
-my $chunk_duration   = 0;
-my $chunk_eta        = 0;
-my $chunk_end        = 0;
-my $chunk_end_time   = 0;
-my $chunk_percentage = 0;
-my $chunk_start      = 0;
-my $chunk_start_time = 0;
-my $chunk_total      = 0;
-my $dsn              = '';
-my $row_count        = 0;
-my $row_delta        = 0;
-my $row_total        = 0;
-my $row_affected     = 0;
-my $sql_count        = '';
-my $sql_template     = '';
-my $sql              = '';
+my $chunk_duration       = 0;
+my $chunk_eta            = 0;
+my $chunk_end            = 0;
+my $chunk_end_time       = 0;
+my $chunk_percentage     = 0;
+my $chunk_start          = 0;
+my $chunk_start_time     = 0;
+my $chunk_total          = 0;
+my $dsn                  = '';
+my $row_count            = 0;
+my $row_delta            = 0;
+my $row_total            = 0;
+my $row_affected         = 0;
+my $sql_count            = '';
+my $sql_template         = '';
+my $sql                  = '';
 my $sth;
-my $table            = $opt{table};
-my $file_template    = '';
+my $table                = $opt{table};
+my $file_template        = '';
+my $file_handle_template;
+my $file_ids             = '';
+my $file_ids_count       = 0;
+my $file_handle_ids;
+
+# --- Read ID's from file ------------------------------------------------------
+if (length($opt{fileids}) > 0) {
+  open $file_handle_ids, '<', $opt{fileids} or die "Could not open file with in ID's: $opt{file_ids}\n";
+
+  print "Waiting...\n";
+
+  while( my $line = <$file_handle_ids>) {
+    $line =~ s/[\r\n]+//g;
+
+    if ($line =~ /^[+-]?\d+$/ ) {
+      ++$file_ids_count;
+    }
+  }
+  close $file_handle_ids;
+}
 
 # --- Prepare SQL from template ------------------------------------------------
 #
 # Load template from file
-open my $file, '<', $opt{template} or die "Could not open template: $opt{template}\n";
+open $file_handle_template, '<', $opt{template} or die "Could not open template: $opt{template}\n";
 
-$file_template = do { local $/; <$file> };
+$file_template = do { local $/; <$file_handle_template> };
 
 # Clear string
 $sql_template = join(' ', $file_template);
@@ -187,12 +215,26 @@ if (index($sql_template, '[TABLE]') == -1) {
   die "SQL template not contain [TABLE] variable.\n";
 }
 
-if (index($sql_template, '[START]') == -1) {
-  die "SQL template not contain [START] variable.\n";
-}
+if ($file_ids_count > 0) {
+  if (index($sql_template, '[FILE_IDS]') == -1) {
+    die "SQL template not contain [FILE_IDS] variable.\n";
+  }
 
-if (index($sql_template, '[END]') == -1) {
-  die "SQL template not contain [END] variable.\n";
+  if (index($sql_template, '[START]') == 0) {
+    die "SQL template has contain [START] variable, please remove it.\n";
+  }
+
+  if (index($sql_template, '[END]') == 0) {
+    die "SQL template has contain [END] variable, please remove it.\n";
+  }
+} else {
+  if (index($sql_template, '[START]') == -1) {
+    die "SQL template not contain [START] variable.\n";
+  }
+
+  if (index($sql_template, '[END]') == -1) {
+    die "SQL template not contain [END] variable.\n";
+  }
 }
 
 # --- Connect to the database --------------------------------------------------
@@ -223,65 +265,141 @@ if ( $@ =~ m/locate DBD\/mysql/i ) {
 }
 
 # --- Calculate loop -----------------------------------------------------------
-$sql_count = "SELECT MAX($opt{key}) FROM $opt{schema}.$opt{table}";
+if ($file_ids_count > 0) {
+  $row_count = $file_ids_count;
+} else {
+  $sql_count = "SELECT MAX($opt{key}) FROM $opt{schema}.$opt{table}";
 
-$sth = $dbh->prepare($sql_count);
-$sth->execute or die "SQL Error: $DBI::errstr\n";
-$row_count = $sth->fetchrow_array();
-$sth->finish;
+  $sth = $dbh->prepare($sql_count);
+  $sth->execute or die "SQL Error: $DBI::errstr\n";
+  $row_count = $sth->fetchrow_array();
+  $sth->finish;
+}
 
 $row_delta   = $opt{chunk} * 2;
 $row_total   = $row_count + $row_delta;
 $chunk_total = ceil($row_total / $opt{chunk});
 
-&info("Max rows in table: $row_count, Delta: $row_delta, Total: $row_total, Chunk size: $opt{chunk}, Number of chunks: $chunk_total");
+&info("Max rows in table/file: $row_count, Delta: $row_delta, Total: $row_total, Chunk size: $opt{chunk}, Number of chunks: $chunk_total");
+# Ignorar este debug
 &debug($sql_count);
 
 # --- Chunk loop ---------------------------------------------------------------
-for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
-  # Get start of execution time
-  $chunk_start_time = time;
+if ($file_ids_count > 0) {
+  open $file_handle_ids, '<', $opt{fileids} or die "Could not open file with in ID's: $opt{file_ids}\n";
 
-  # Calculate chunk
-  $chunk_start      = (($chunk_position * $opt{chunk}) - $opt{chunk}) + 1;
-  $chunk_end        = ($chunk_position * $opt{chunk});
-  $chunk_percentage = ((100 * $chunk_position) / $chunk_total);
-  $chunk_percentage = sprintf("%.0f", $chunk_percentage);
+  my @ids = ();
+  my $count = 0;
+  my $chunk_position = 1;
+  my $in = "";
 
-  # Resume process with start and end table id
-  if ($opt{start} > 0 && $chunk_end <= $opt{start}) {
-    # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
-    next;
+  while( my $line = <$file_handle_ids>)  {
+    # Get start of execution time
+    $chunk_start_time = time;
+
+    # Clear line
+    $line =~ s/[\r\n]+//g;
+
+    # Check the value line is number and add to array
+    if ($line =~ /^[+-]?\d+$/ ) {
+      push @ids, $line;
+    }
+
+    if (++$count == $opt{chunk}) {
+      $chunk_position++;
+      $in = join(',', @ids);
+      $count = 0;
+      @ids = ();
+
+      # Calculate chunk
+      $chunk_start      = (($chunk_position * $opt{chunk}) - $opt{chunk}) + 1;
+      $chunk_end        = ($chunk_position * $opt{chunk});
+      $chunk_percentage = ((100 * $chunk_position) / $chunk_total);
+      $chunk_percentage = sprintf("%.0f", $chunk_percentage);
+
+      # Resume process with start and end table id
+      if ($opt{start} > 0 && $chunk_end <= $opt{start}) {
+        # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
+        next;
+      }
+
+      if ($opt{end} > 0 && $chunk_start > $opt{end}) {
+        # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
+        next;
+      }
+
+      # Add variables into template
+      $sql = $sql_template;
+      $sql =~ s/\[TABLE\]/$table/g;
+      $sql =~ s/\[FILE_IDS\]/$in/g;
+
+      # Execute query
+      &log($chunk_position, $chunk_percentage, $chunk_eta, $chunk_start, $chunk_end);
+      &debug($sql);
+
+      $sth = $dbh->prepare($sql);
+      $sth->execute or die "SQL: $sql\nSQL Error: $DBI::errstr\n";
+      $row_affected += $sth->rows;
+
+      &debug("Rows Matched: " . $sth->rows);
+
+      # Wait N seconds
+      Time::HiRes::sleep($opt{sleep});
+
+      # Calculate execution time:
+      $chunk_end_time = time - $chunk_start_time;
+      $chunk_duration = ceil(($chunk_end_time + $chunk_duration) / 2);
+      $chunk_eta      = (($chunk_total - $chunk_position) - 1) * $chunk_duration;
+    }
   }
 
-  if ($opt{end} > 0 && $chunk_start > $opt{end}) {
-    # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
-    next;
+  close $file_handle_ids;
+} else {
+  for (my $chunk_position=1; $chunk_position <= $chunk_total; $chunk_position++) {
+    # Get start of execution time
+    $chunk_start_time = time;
+
+    # Calculate chunk
+    $chunk_start      = (($chunk_position * $opt{chunk}) - $opt{chunk}) + 1;
+    $chunk_end        = ($chunk_position * $opt{chunk});
+    $chunk_percentage = ((100 * $chunk_position) / $chunk_total);
+    $chunk_percentage = sprintf("%.0f", $chunk_percentage);
+
+    # Resume process with start and end table id
+    if ($opt{start} > 0 && $chunk_end <= $opt{start}) {
+      # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
+      next;
+    }
+
+    if ($opt{end} > 0 && $chunk_start > $opt{end}) {
+      # &log($chunk_position, $chunk_percentage, $chunk_start, $chunk_end, 'Ignored!');
+      next;
+    }
+
+    # Add variables into template
+    $sql = $sql_template;
+    $sql =~ s/\[TABLE\]/$table/g;
+    $sql =~ s/\[START\]/$chunk_start/g;
+    $sql =~ s/\[END\]/$chunk_end/g;
+
+    # Execute query
+    &log($chunk_position, $chunk_percentage, $chunk_eta, $chunk_start, $chunk_end);
+    &debug($sql);
+
+    $sth = $dbh->prepare($sql);
+    $sth->execute or die "SQL: $sql\nSQL Error: $DBI::errstr\n";
+    $row_affected += $sth->rows;
+
+    &debug("Rows Matched: " . $sth->rows);
+
+    # Wait N seconds
+    Time::HiRes::sleep($opt{sleep});
+
+    # Calculate execution time:
+    $chunk_end_time = time - $chunk_start_time;
+    $chunk_duration = ceil(($chunk_end_time + $chunk_duration) / 2);
+    $chunk_eta      = (($chunk_total - $chunk_position) - 1) * $chunk_duration;
   }
-
-  # Add variables into template
-  $sql = $sql_template;
-  $sql =~ s/\[TABLE\]/$table/g;
-  $sql =~ s/\[START\]/$chunk_start/g;
-  $sql =~ s/\[END\]/$chunk_end/g;
-
-  # Execute query
-  &log($chunk_position, $chunk_percentage, $chunk_eta, $chunk_start, $chunk_end);
-  &debug($sql);
-
-  $sth = $dbh->prepare($sql);
-  $sth->execute or die "SQL: $sql\nSQL Error: $DBI::errstr\n";
-  $row_affected += $sth->rows;
-
-  &debug("Rows Matched: " . $sth->rows);
-
-  # Wait N seconds
-  Time::HiRes::sleep($opt{sleep});
-
-  # Calculate execution time:
-  $chunk_end_time = time - $chunk_start_time;
-  $chunk_duration = ceil(($chunk_end_time + $chunk_duration) / 2);
-  $chunk_eta      = (($chunk_total - $chunk_position) - 1) * $chunk_duration;
 }
 
 # --- Summary ------------------------------------------------------------------
